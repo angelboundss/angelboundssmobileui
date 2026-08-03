@@ -247,8 +247,29 @@ closeBtn.TextColor3 = Color3.fromRGB(20, 16, 30)
 closeBtn.Parent = frame
 Instance.new('UICorner', closeBtn).CornerRadius = UDim.new(0, 6)
 
+local openBtn = Instance.new('TextButton')
+openBtn.Size = UDim2.new(0, 90, 0, 34)
+openBtn.Position = UDim2.new(0.5, -45, 0, 18)
+openBtn.AnchorPoint = Vector2.new(0.5, 0)
+openBtn.BackgroundColor3 = Color3.fromRGB(170, 130, 255)
+openBtn.Text = '♥'
+openBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+openBtn.Font = Enum.Font.GothamBold
+openBtn.TextSize = 13
+openBtn.Visible = false
+openBtn.Parent = gui
+Instance.new('UICorner', openBtn).CornerRadius = UDim.new(0, 8)
+
+local openBtnDragActive = false
+local openBtnDragInput = nil
+local openBtnDragStart = nil
+local openBtnStartPos = nil
+
 local function hideGui()
     frame.Visible = false
+    openBtn.Visible = true
+    openBtn.Position = UDim2.new(0.5, -45, 0, 18)
+    openBtn.AnchorPoint = Vector2.new(0.5, 0)
     if dropScroll then
         dropScroll.Visible = false
     end
@@ -259,12 +280,40 @@ end
 
 local function showGui()
     frame.Visible = true
+    openBtn.Visible = false
     if refreshSliderState then
         refreshSliderState()
     end
 end
 
 closeBtn.MouseButton1Click:Connect(hideGui)
+
+openBtn.MouseButton1Click:Connect(showGui)
+
+openBtn.InputBegan:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+        openBtnDragActive = true
+        openBtnDragInput = input
+        openBtnDragStart = input.Position
+        openBtnStartPos = openBtn.Position
+    end
+end)
+
+openBtn.InputEnded:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+        openBtnDragActive = false
+        openBtnDragInput = nil
+        openBtnDragStart = nil
+        openBtnStartPos = nil
+    end
+end)
+
+UIS.InputChanged:Connect(function(input)
+    if openBtnDragActive and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
+        local delta = input.Position - openBtnDragStart
+        openBtn.Position = UDim2.new(openBtnStartPos.X.Scale, openBtnStartPos.X.Offset + delta.X, openBtnStartPos.Y.Scale, openBtnStartPos.Y.Offset + delta.Y)
+    end
+end)
 
 local sidebar = Instance.new('Frame')
 sidebar.Size = UDim2.new(0, 160, 1, 0)
