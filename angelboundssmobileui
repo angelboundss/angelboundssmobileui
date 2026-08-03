@@ -252,10 +252,16 @@ local function hideGui()
     if dropScroll then
         dropScroll.Visible = false
     end
+    if refreshSliderState then
+        refreshSliderState()
+    end
 end
 
 local function showGui()
     frame.Visible = true
+    if refreshSliderState then
+        refreshSliderState()
+    end
 end
 
 closeBtn.MouseButton1Click:Connect(hideGui)
@@ -469,7 +475,7 @@ end)
 local toggleLabel = Instance.new('TextLabel')
 toggleLabel.Size = UDim2.new(0, 150, 0, 30)
 toggleLabel.Position = UDim2.new(0, 15, 0, 55)
-toggleLabel.Text = 'Revolver Bypass'
+toggleLabel.Text = 'Show FOV'
 toggleLabel.TextColor3 = Color3.fromRGB(180, 140, 255)
 toggleLabel.TextSize = 13
 toggleLabel.Font = Enum.Font.Gotham
@@ -477,26 +483,71 @@ toggleLabel.BackgroundTransparency = 1
 toggleLabel.TextXAlignment = Enum.TextXAlignment.Left
 toggleLabel.Parent = tabs.SilentAim
 
-local toggleBtn = Instance.new('TextButton')
-toggleBtn.Size = UDim2.new(0, 50, 0, 22)
-toggleBtn.Position = UDim2.new(1, -65, 0, 59)
-toggleBtn.BackgroundColor3 = Color3.fromRGB(245, 240, 250)
-toggleBtn.Text = 'OFF'
-toggleBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
-toggleBtn.Font = Enum.Font.GothamBold
-toggleBtn.TextSize = 11
-toggleBtn.Parent = tabs.SilentAim
-Instance.new('UICorner', toggleBtn).CornerRadius = UDim.new(0, 6)
+local fovToggleBtn = Instance.new('TextButton')
+fovToggleBtn.Size = UDim2.new(0, 50, 0, 22)
+fovToggleBtn.Position = UDim2.new(1, -65, 0, 59)
+fovToggleBtn.BackgroundColor3 = Color3.fromRGB(245, 240, 250)
+fovToggleBtn.Text = 'OFF'
+fovToggleBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+fovToggleBtn.Font = Enum.Font.GothamBold
+fovToggleBtn.TextSize = 11
+fovToggleBtn.Parent = tabs.SilentAim
+Instance.new('UICorner', fovToggleBtn).CornerRadius = UDim.new(0, 6)
 
-toggleBtn.MouseButton1Click:Connect(function()
-    _G.RevolverBypass = not _G.RevolverBypass
-    if _G.RevolverBypass then
-        toggleBtn.Text = 'ON'
-        toggleBtn.BackgroundColor3 = Color3.fromRGB(170, 130, 255)
-    else
-        toggleBtn.Text = 'OFF'
-        toggleBtn.BackgroundColor3 = Color3.fromRGB(245, 240, 250)
+local fovCircle = Instance.new('Frame')
+fovCircle.Name = 'FOVCircle'
+fovCircle.Size = UDim2.new(0, 0, 0, 0)
+fovCircle.Position = UDim2.new(0, 0, 0, 0)
+fovCircle.BackgroundTransparency = 1
+fovCircle.BorderSizePixel = 0
+fovCircle.Visible = false
+fovCircle.ZIndex = 200
+fovCircle.Parent = gui
+
+local fovCircleStroke = Instance.new('UIStroke')
+fovCircleStroke.Color = Color3.new(1, 1, 1)
+fovCircleStroke.Thickness = 2
+fovCircleStroke.Transparency = 0
+fovCircleStroke.Parent = fovCircle
+
+Instance.new('UICorner', fovCircle).CornerRadius = UDim.new(1, 0)
+
+_G.FOV_Enabled = false
+
+local function updateFovVisual()
+    local radius = math.max(0, tonumber(_G.FOV_RADIUS) or 0)
+    local enabled = _G.FOV_Enabled == true
+
+    if not enabled or radius <= 0 then
+        fovCircle.Visible = false
+        return
     end
+
+    local diameter = math.clamp(radius * 2, 20, 1800)
+    local mousePos = UIS:GetMouseLocation()
+    local screenSize = cam and cam.ViewportSize or Vector2.new(1920, 1080)
+    local x = math.clamp(mousePos.X - (diameter / 2), 0, math.max(0, screenSize.X - diameter))
+    local y = math.clamp(mousePos.Y - (diameter / 2), 0, math.max(0, screenSize.Y - diameter))
+
+    fovCircle.Size = UDim2.new(0, diameter, 0, diameter)
+    fovCircle.Position = UDim2.new(0, x, 0, y)
+    fovCircle.Visible = true
+end
+
+fovToggleBtn.MouseButton1Click:Connect(function()
+    _G.FOV_Enabled = not _G.FOV_Enabled
+    if _G.FOV_Enabled then
+        fovToggleBtn.Text = 'ON'
+        fovToggleBtn.BackgroundColor3 = Color3.fromRGB(170, 130, 255)
+    else
+        fovToggleBtn.Text = 'OFF'
+        fovToggleBtn.BackgroundColor3 = Color3.fromRGB(245, 240, 250)
+    end
+    updateFovVisual()
+end)
+
+game:GetService('RunService').RenderStepped:Connect(function()
+    updateFovVisual()
 end)
 
 local wallLabel = Instance.new('TextLabel')
@@ -1545,15 +1596,12 @@ local function refreshWhitelistList()
     end
 end
 
-_G.Teleport_Key = Enum.KeyCode.T
 local selectedTeleportPlayer = nil
-local teleportLoopActive = false
-local isChoosingTeleportKey = false
 
 local tpLabel = Instance.new('TextLabel')
 tpLabel.Size = UDim2.new(1, -30, 0, 30)
 tpLabel.Position = UDim2.new(0, 15, 0, 55)
-tpLabel.Text = 'Select a player and use your teleport key:'
+tpLabel.Text = 'Click a player to teleport to them:'
 tpLabel.TextColor3 = Color3.fromRGB(180, 140, 255)
 tpLabel.TextSize = 13
 tpLabel.Font = Enum.Font.Gotham
@@ -1571,17 +1619,6 @@ teleportSelectionLabel.Font = Enum.Font.Gotham
 teleportSelectionLabel.BackgroundTransparency = 1
 teleportSelectionLabel.TextXAlignment = Enum.TextXAlignment.Left
 teleportSelectionLabel.Parent = tabs.Teleport
-
-local teleportKeyButton = Instance.new('TextButton')
-teleportKeyButton.Size = UDim2.new(0, 120, 0, 24)
-teleportKeyButton.Position = UDim2.new(1, -135, 0, 80)
-teleportKeyButton.BackgroundColor3 = Color3.fromRGB(235, 230, 250)
-teleportKeyButton.Text = 'Key: T'
-teleportKeyButton.TextColor3 = Color3.fromRGB(180, 140, 255)
-teleportKeyButton.Font = Enum.Font.GothamBold
-teleportKeyButton.TextSize = 11
-teleportKeyButton.Parent = tabs.Teleport
-Instance.new('UICorner', teleportKeyButton).CornerRadius = UDim.new(0, 6)
 
 local tpListFrame = Instance.new('ScrollingFrame')
 tpListFrame.Size = UDim2.new(1, -30, 1, -115)
@@ -1686,48 +1723,11 @@ local function refreshTeleportList()
 
         item.MouseButton1Click:Connect(function()
             updateTeleportSelection(p)
+            teleportToPlayer(p)
             refreshTeleportList()
         end)
     end
 end
-
-teleportKeyButton.MouseButton1Click:Connect(function()
-    isChoosingTeleportKey = true
-    teleportKeyButton.Text = 'Press a key...'
-end)
-
-UIS.InputBegan:Connect(function(input, gpe)
-    if gpe then return end
-    if isChoosingTeleportKey and input.UserInputType == Enum.UserInputType.Keyboard then
-        _G.Teleport_Key = input.KeyCode
-        teleportKeyButton.Text = 'Key: ' .. input.KeyCode.Name
-        isChoosingTeleportKey = false
-    elseif input.KeyCode == _G.Teleport_Key and not isChoosingTeleportKey and selectedTeleportPlayer then
-        if not teleportLoopActive then
-            teleportLoopActive = true
-            teleportToPlayer(selectedTeleportPlayer)
-            task.spawn(function()
-                while teleportLoopActive do
-                    if selectedTeleportPlayer then
-                        teleportToPlayer(selectedTeleportPlayer)
-                    end
-                    task.wait(0.15)
-                    if not UIS:IsKeyDown(_G.Teleport_Key) then
-                        teleportLoopActive = false
-                        break
-                    end
-                end
-            end)
-        end
-    end
-end)
-
-UIS.InputEnded:Connect(function(input, gpe)
-    if gpe then return end
-    if input.KeyCode == _G.Teleport_Key then
-        teleportLoopActive = false
-    end
-end)
 
 local function applyHeadlessState(character)
     if not character then return end
@@ -1871,24 +1871,91 @@ end)
 
 refreshWhitelistList()
 refreshTeleportList()
+
+local function syncFovUI(value)
+    local clamped = math.clamp(math.floor(tonumber(value) or _G.FOV_RADIUS or 0), 0, fovMax)
+    _G.FOV_RADIUS = clamped
+    if fovInput and fovInput:IsA('TextBox') then
+        fovInput.Text = tostring(clamped)
+    end
+    local percent = fovMax > 0 and (clamped / fovMax) or 0
+    if button then
+        button.Position = UDim2.new(percent, -7, 0.5, -7)
+    end
+    updateFovVisual()
+end
+
+local function syncSpeedUI(value)
+    local clamped = math.clamp(math.floor(tonumber(value) or _G.Speed_Value or 16), 16, 1000)
+    _G.Speed_Value = clamped
+    if speedInput and speedInput:IsA('TextBox') then
+        speedInput.Text = tostring(clamped)
+    end
+    if speedValLabel then
+        speedValLabel.Text = 'Speed Value: ' .. tostring(clamped)
+    end
+    if speedSliderBtn then
+        local percent = (clamped - 16) / 984
+        speedSliderBtn.Position = UDim2.new(math.clamp(percent, 0, 1), -7, 0.5, -7)
+    end
+end
+
+local function syncJumpUI(value)
+    local clamped = math.clamp(math.floor(tonumber(value) or _G.JumpPower_Value or 50), 50, 1000)
+    _G.JumpPower_Value = clamped
+    if jumpInput and jumpInput:IsA('TextBox') then
+        jumpInput.Text = tostring(clamped)
+    end
+    if jumpValLabel then
+        jumpValLabel.Text = 'Jump Value: ' .. tostring(clamped)
+    end
+    if jumpSliderBtn then
+        local percent = (clamped - 50) / 950
+        jumpSliderBtn.Position = UDim2.new(math.clamp(percent, 0, 1), -7, 0.5, -7)
+    end
+end
+
+local function refreshSliderState()
+    syncFovUI(_G.FOV_RADIUS or 0)
+    syncSpreadUI(_0x52a0d5.BulletSpread.Amount or 0)
+    syncSpeedUI(_G.Speed_Value or 16)
+    syncJumpUI(_G.JumpPower_Value or 50)
+end
+
 local moveConnection1
 local function updateSlider1(input)
     local percentage = math.clamp((input.Position.X - slider.AbsolutePosition.X) / slider.AbsoluteSize.X, 0, 1)
-    button.Position = UDim2.new(percentage, -7, 0.5, -7)
-    local finalValue = math.round(percentage * fovMax)
-    if fovInput and fovInput:IsA('TextBox') then
-        fovInput.Text = tostring(finalValue)
-    end
-    _G.FOV_RADIUS = finalValue
+    syncFovUI(math.round(percentage * fovMax))
 end
 
-button.InputBegan:Connect(function(input)
+local function startFovDrag(input)
     if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+        updateSlider1(input)
         moveConnection1 = UIS.InputChanged:Connect(function(moveInput)
             if moveInput.UserInputType == Enum.UserInputType.MouseMovement or moveInput.UserInputType == Enum.UserInputType.Touch then
                 updateSlider1(moveInput)
             end
         end)
+    end
+end
+
+button.InputBegan:Connect(startFovDrag)
+button.InputEnded:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+        if moveConnection1 then
+            moveConnection1:Disconnect()
+            moveConnection1 = nil
+        end
+    end
+end)
+
+slider.InputBegan:Connect(startFovDrag)
+slider.InputEnded:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+        if moveConnection1 then
+            moveConnection1:Disconnect()
+            moveConnection1 = nil
+        end
     end
 end)
 
@@ -1910,14 +1977,10 @@ end
 fovInput.FocusLost:Connect(function(enterPressed)
     local value = tonumber(fovInput.Text)
     if not value then
-        fovInput.Text = tostring(_G.FOV_RADIUS)
+        syncFovUI(_G.FOV_RADIUS)
         return
     end
-    local clamped = math.clamp(value, 0, fovMax)
-    _G.FOV_RADIUS = clamped
-    local percent = fovMax > 0 and clamped / fovMax or 0
-    button.Position = UDim2.new(percent, -7, 0.5, -7)
-    fovInput.Text = tostring(clamped)
+    syncFovUI(value)
 end)
 
 spreadInput.FocusLost:Connect(function(enterPressed)
@@ -1949,13 +2012,8 @@ end)
 local moveConnection4
 local function updateSpeedSlider(input)
     local percentage = math.clamp((input.Position.X - speedSlider.AbsolutePosition.X) / speedSlider.AbsoluteSize.X, 0, 1)
-    speedSliderBtn.Position = UDim2.new(percentage, -7, 0.5, -7)
     local finalValue = math.round(16 + (percentage * 984))
-    speedValLabel.Text = 'Speed Value: ' .. tostring(finalValue)
-    if speedInput and speedInput:IsA('TextBox') then
-        speedInput.Text = tostring(finalValue)
-    end
-    _G.Speed_Value = finalValue
+    syncSpeedUI(finalValue)
 end
 
 speedSliderBtn.InputBegan:Connect(function(input)
@@ -1968,16 +2026,20 @@ speedSliderBtn.InputBegan:Connect(function(input)
     end
 end)
 
+speedSliderBtn.InputEnded:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+        if moveConnection4 then
+            moveConnection4:Disconnect()
+            moveConnection4 = nil
+        end
+    end
+end)
+
 local moveConnection5
 local function updateJumpSlider(input)
     local percentage = math.clamp((input.Position.X - jumpSlider.AbsolutePosition.X) / jumpSlider.AbsoluteSize.X, 0, 1)
-    jumpSliderBtn.Position = UDim2.new(percentage, -7, 0.5, -7)
     local finalValue = math.round(50 + (percentage * 950))
-    jumpValLabel.Text = 'Jump Value: ' .. tostring(finalValue)
-    if jumpInput and jumpInput:IsA('TextBox') then
-        jumpInput.Text = tostring(finalValue)
-    end
-    _G.JumpPower_Value = finalValue
+    syncJumpUI(finalValue)
 end
 
 jumpSliderBtn.InputBegan:Connect(function(input)
@@ -1987,6 +2049,15 @@ jumpSliderBtn.InputBegan:Connect(function(input)
                 updateJumpSlider(moveInput)
             end
         end)
+    end
+end)
+
+jumpSliderBtn.InputEnded:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+        if moveConnection5 then
+            moveConnection5:Disconnect()
+            moveConnection5 = nil
+        end
     end
 end)
 
