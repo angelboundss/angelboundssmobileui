@@ -4,7 +4,18 @@ game:GetService("StarterGui"):SetCore("SendNotification", {
     Duration = 5
 })
 
-local handler = require(game:GetService("ReplicatedStorage").Modules.GunHandler)
+local handler
+local success, handlerModule = pcall(function()
+    return require(game:GetService("ReplicatedStorage").Modules.GunHandler)
+end)
+
+if success and handlerModule then
+    handler = handlerModule
+else
+    warn("GunHandler module not found; continuing with UI only")
+    handler = { getAim = function(origin, maxDist) return nil end }
+end
+
 local plrs = game:GetService("Players")
 local me = plrs.LocalPlayer
 local playerGui = me:WaitForChild("PlayerGui")
@@ -39,6 +50,22 @@ _G.JumpPower_ToggleEnabled = false
 
 _G.Headless_Enabled = false
 _G.Whitelist = {}
+
+-- TriggerBot
+local TriggerBot = {
+    MasterEnabled = false,
+    TriggerKey = Enum.KeyCode.T,
+    Mode = "Toggle",
+    Active = false,
+    ClickDelay = 0.02,
+    Blacklist = {"Knife", "Wallet", "Phone", "Chicken", "Pizza", "Flashlight", "Medkit"}
+}
+
+-- Hitbox
+_G.Hitbox_Enabled = false
+_G.Hitbox_Size = 1
+_G.Hitbox_Visible = false
+_G.Hitbox_Color = Color3.fromRGB(170, 130, 255)
 
 local function isWhitelisted(player)
     if not player then return false end
@@ -82,6 +109,7 @@ local _0xn1 = 100 local _0xn8 = 1 local _0xn9 = 0 local _0xn11 = 2 local _0xn14 
 local _0x52a0d5 = { BulletSpread = { Enabled = true, Amount = 100 } }
 local _0x9ba38e
 local isCamLockBinding = false
+local isTriggerBinding = false
 
 _0x9ba38e = hookfunction(math.random, function(...)
     local _0x5e1a0d = { ... }
@@ -161,7 +189,17 @@ end
 handler.getAim = function(origin, maxDist)
     if _G.RevolverBypass then
         local currentTool = me.Character and me.Character:FindFirstChildOfClass("Tool")
-        if currentTool and (currentTool.Name == "[Revolver]" or currentTool.Name == "Revolver") then return oldFunc(origin, maxDist) end
+        if currentTool and (currentTool.Name == "[Revolver]" or currentTool.Name == "Revolver") then
+            if _G.FOV_RADIUS > 0 then
+                local target = getClosest()
+                if target then
+                    local dir = (target.Position - origin).Unit
+                    local dist = (target.Position - origin).Magnitude
+                    return dir, math.min(dist, maxDist or 200)
+                end
+            end
+            return oldFunc(origin, maxDist)
+        end
     end
     local target = getClosest()
     if target then
@@ -174,6 +212,7 @@ end
 
 local UIS = game:GetService('UserInputService')
 local CoreGui = game:GetService('CoreGui')
+local RunService = game:GetService('RunService')
 
 local gui = Instance.new('ScreenGui')
 gui.IgnoreGuiInset = true
@@ -181,9 +220,27 @@ gui.ResetOnSpawn = false
 gui.Name = 'SilentAimUI'
 gui.Parent = CoreGui
 
+local fovCircle = Instance.new('Frame')
+fovCircle.Name = 'RevolverFovCircle'
+fovCircle.Size = UDim2.new(0, 0, 0, 0)
+fovCircle.Position = UDim2.new(0, 0, 0, 0)
+fovCircle.BackgroundTransparency = 1
+fovCircle.BorderSizePixel = 0
+fovCircle.Visible = false
+fovCircle.ZIndex = 100
+fovCircle.Parent = gui
+
+local fovCircleStroke = Instance.new('UIStroke')
+fovCircleStroke.Color = Color3.new(1, 1, 1)
+fovCircleStroke.Thickness = 2
+fovCircleStroke.Transparency = 0
+fovCircleStroke.Parent = fovCircle
+
+Instance.new('UICorner', fovCircle).CornerRadius = UDim.new(1, 0)
+
 local frame = Instance.new('Frame')
-frame.Size = UDim2.new(0, 400, 0, 280)
-frame.Position = UDim2.new(0.5, -200, 0.5, -140)
+frame.Size = UDim2.new(0, 520, 0, 360)
+frame.Position = UDim2.new(0.5, -260, 0.5, -180)
 frame.BackgroundColor3 = Color3.fromRGB(20, 16, 30)
 frame.BorderSizePixel = 0
 frame.Active = true
@@ -191,7 +248,7 @@ frame.Parent = gui
 Instance.new('UICorner', frame).CornerRadius = UDim.new(0, 16)
 
 local dragBar = Instance.new('Frame')
-dragBar.Size = UDim2.new(1, -40, 0, 34)
+dragBar.Size = UDim2.new(1, -60, 0, 42)
 dragBar.Position = UDim2.new(0, 0, 0, 0)
 dragBar.BackgroundTransparency = 1
 dragBar.BorderSizePixel = 0
@@ -315,8 +372,10 @@ UIS.InputChanged:Connect(function(input)
     end
 end)
 
+closeBtn.MouseButton1Click:Connect(hideGui)
+
 local sidebar = Instance.new('Frame')
-sidebar.Size = UDim2.new(0, 160, 1, 0)
+sidebar.Size = UDim2.new(0, 230, 1, 0)
 sidebar.BackgroundColor3 = Color3.fromRGB(28, 20, 44)
 sidebar.BorderSizePixel = 0
 sidebar.Parent = frame
@@ -331,36 +390,57 @@ sideCover.BorderSizePixel = 0
 sideCover.Parent = sidebar
 
 local sideTitle = Instance.new('TextLabel')
-sideTitle.Size = UDim2.new(1, -20, 0, 30)
-sideTitle.Position = UDim2.new(0, 15, 0, 15)
+sideTitle.Size = UDim2.new(1, -20, 0, 40)
+sideTitle.Position = UDim2.new(0, 15, 0, 20)
 sideTitle.Text = 'Angelbounds Main ♡'
 sideTitle.TextColor3 = Color3.fromRGB(240, 235, 255)
-sideTitle.TextSize = 12
+sideTitle.TextSize = 14
 sideTitle.Font = Enum.Font.Gotham
 sideTitle.BackgroundTransparency = 1
 sideTitle.TextXAlignment = Enum.TextXAlignment.Left
 sideTitle.Parent = sidebar
+
+local sidebarList = Instance.new('ScrollingFrame')
+sidebarList.Size = UDim2.new(1, 0, 1, -70)
+sidebarList.Position = UDim2.new(0, 0, 0, 60)
+sidebarList.BackgroundTransparency = 1
+sidebarList.BorderSizePixel = 0
+sidebarList.ScrollBarThickness = 6
+sidebarList.CanvasSize = UDim2.new(0, 0, 0, 0)
+sidebarList.AutomaticCanvasSize = Enum.AutomaticSize.Y
+sidebarList.ScrollingDirection = Enum.ScrollingDirection.Y
+sidebarList.VerticalScrollBarInset = Enum.ScrollBarInset.Always
+sidebarList.Parent = sidebar
+
+local sidebarListLayout = Instance.new('UIListLayout')
+sidebarListLayout.Padding = UDim.new(0, 8)
+sidebarListLayout.SortOrder = Enum.SortOrder.LayoutOrder
+sidebarListLayout.Parent = sidebarList
+
 local welcomeLabel = Instance.new('TextLabel')
-welcomeLabel.Size = UDim2.new(0, 190, 0, 24)
-welcomeLabel.Position = UDim2.new(0, 165, 0, 15)
+welcomeLabel.Size = UDim2.new(0, 260, 0, 24)
+welcomeLabel.Position = UDim2.new(0, 245, 0, 20)
 welcomeLabel.Text = 'Hello, ' .. me.Name
 welcomeLabel.TextColor3 = Color3.fromRGB(240, 235, 255)
-welcomeLabel.TextSize = 15
+welcomeLabel.TextSize = 18
 welcomeLabel.Font = Enum.Font.Gotham
 welcomeLabel.BackgroundTransparency = 1
 welcomeLabel.TextXAlignment = Enum.TextXAlignment.Left
 welcomeLabel.Parent = frame
 
 local tabContainer = Instance.new('Frame')
-tabContainer.Size = UDim2.new(0, 200, 0, 215)
-tabContainer.Position = UDim2.new(0, 160, 0, 50)
+tabContainer.Size = UDim2.new(0, 270, 0, 285)
+tabContainer.Position = UDim2.new(0, 230, 0, 50)
 tabContainer.BackgroundTransparency = 1
+tabContainer.ClipsDescendants = true
 tabContainer.Parent = frame
 
 local tabs = {
     CamLock = Instance.new('ScrollingFrame'),
     Home = Instance.new('ScrollingFrame'),
     SilentAim = Instance.new('ScrollingFrame'),
+    TriggerBot = Instance.new('ScrollingFrame'),
+    Hitbox = Instance.new('ScrollingFrame'),
     Whitelist = Instance.new('ScrollingFrame'),
     ESP = Instance.new('ScrollingFrame'),
     Misc = Instance.new('ScrollingFrame'),
@@ -378,14 +458,16 @@ for name, page in pairs(tabs) do
     page.CanvasSize = UDim2.new(0, 0, 0, 0)
     page.ScrollingDirection = Enum.ScrollingDirection.Y
     page.ScrollBarThickness = 6
+    page.ScrollBarImageColor3 = Color3.fromRGB(170, 130, 255)
     page.AutomaticCanvasSize = Enum.AutomaticSize.Y
+    page.VerticalScrollBarInset = Enum.ScrollBarInset.Always
     page.Parent = tabContainer
     Instance.new('UICorner', page).CornerRadius = UDim.new(0, 12)
 end
 
 local tabButtons = {}
-local tabNames = {"Home", "Silent Aim", "CamLock", "Whitelist", "ESP", "Misc", "Teleport", "Avatar", "Settings"}
-local tabKeys = {"Home", "SilentAim", "CamLock", "Whitelist", "ESP", "Misc", "Teleport", "Avatar", "Settings"}
+local tabNames = {"Home", "Silent Aim", "Trigger Bot", "Hitbox Expander", "CamLock", "Whitelist", "ESP", "Misc", "Teleport", "Avatar", "Settings"}
+local tabKeys = {"Home", "SilentAim", "TriggerBot", "Hitbox", "CamLock", "Whitelist", "ESP", "Misc", "Teleport", "Avatar", "Settings"}
 
 local function switchTab(targetKey)
     for key, page in pairs(tabs) do
@@ -405,14 +487,16 @@ end
 for idx, labelText in ipairs(tabNames) do
     local key = tabKeys[idx]
     local btn = Instance.new('TextButton')
-    btn.Size = UDim2.new(1, -20, 0, 20)
-    btn.Position = UDim2.new(0, 10, 0, 50 + (idx - 1) * 22)
+    btn.Size = UDim2.new(1, -20, 0, 28)
+    btn.LayoutOrder = idx
     btn.Text = '   ' .. labelText
-    btn.TextSize = 11
+    btn.TextSize = 12
     btn.Font = Enum.Font.Gotham
     btn.TextXAlignment = Enum.TextXAlignment.Left
-    btn.Parent = sidebar
-    Instance.new('UICorner', btn).CornerRadius = UDim.new(0, 6)
+    btn.BackgroundColor3 = Color3.fromRGB(38, 33, 46)
+    btn.TextColor3 = Color3.fromRGB(245, 240, 250)
+    btn.Parent = sidebarList
+    Instance.new('UICorner', btn).CornerRadius = UDim.new(0, 8)
     tabButtons[key] = btn
     
     btn.MouseButton1Click:Connect(function()
@@ -443,6 +527,8 @@ end
 
 createPageHeader(tabs.Home, "Home")
 createPageHeader(tabs.SilentAim, "Silent Aim Settings")
+createPageHeader(tabs.TriggerBot, "Trigger Bot")
+createPageHeader(tabs.Hitbox, "Hitbox Expander")
 createPageHeader(tabs.CamLock, "CamLock Settings")
 createPageHeader(tabs.Whitelist, "Whitelist")
 createPageHeader(tabs.ESP, "ESP Settings")
@@ -479,8 +565,8 @@ avatarImage.ScaleType = Enum.ScaleType.Crop
 avatarImage.Parent = avatarFrame
 
 local displayLabel = Instance.new('TextLabel')
-displayLabel.Size = UDim2.new(1, -150, 0, 22)
-displayLabel.Position = UDim2.new(0, 150, 0, 95)
+displayLabel.Size = UDim2.new(1, -30, 0, 22)
+displayLabel.Position = UDim2.new(0, 15, 0, 95)
 displayLabel.Text = 'Display Name: ' .. me.DisplayName
 displayLabel.TextColor3 = Color3.fromRGB(230, 220, 255)
 displayLabel.TextSize = 13
@@ -491,8 +577,8 @@ displayLabel.TextXAlignment = Enum.TextXAlignment.Left
 displayLabel.Parent = tabs.Home
 
 local usernameLabel = Instance.new('TextLabel')
-usernameLabel.Size = UDim2.new(1, -150, 0, 22)
-usernameLabel.Position = UDim2.new(0, 150, 0, 125)
+usernameLabel.Size = UDim2.new(1, -30, 0, 22)
+usernameLabel.Position = UDim2.new(0, 15, 0, 125)
 usernameLabel.Text = 'Username: ' .. me.Name
 usernameLabel.TextColor3 = Color3.fromRGB(230, 220, 255)
 usernameLabel.TextSize = 13
@@ -502,8 +588,8 @@ usernameLabel.TextXAlignment = Enum.TextXAlignment.Left
 usernameLabel.Parent = tabs.Home
 
 local idLabel = Instance.new('TextLabel')
-idLabel.Size = UDim2.new(1, -150, 0, 22)
-idLabel.Position = UDim2.new(0, 150, 0, 155)
+idLabel.Size = UDim2.new(1, -30, 0, 22)
+idLabel.Position = UDim2.new(0, 15, 0, 155)
 idLabel.Text = 'User ID: ' .. tostring(me.UserId)
 idLabel.TextColor3 = Color3.fromRGB(230, 220, 255)
 idLabel.TextSize = 13
@@ -532,49 +618,28 @@ toggleLabel.BackgroundTransparency = 1
 toggleLabel.TextXAlignment = Enum.TextXAlignment.Left
 toggleLabel.Parent = tabs.SilentAim
 
-local fovToggleBtn = Instance.new('TextButton')
-fovToggleBtn.Size = UDim2.new(0, 50, 0, 22)
-fovToggleBtn.Position = UDim2.new(1, -65, 0, 59)
-fovToggleBtn.BackgroundColor3 = Color3.fromRGB(245, 240, 250)
-fovToggleBtn.Text = 'OFF'
-fovToggleBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
-fovToggleBtn.Font = Enum.Font.GothamBold
-fovToggleBtn.TextSize = 11
-fovToggleBtn.Parent = tabs.SilentAim
-Instance.new('UICorner', fovToggleBtn).CornerRadius = UDim.new(0, 6)
+local toggleBtn = Instance.new('TextButton')
+toggleBtn.Size = UDim2.new(0, 50, 0, 22)
+toggleBtn.Position = UDim2.new(1, -65, 0, 59)
+toggleBtn.BackgroundColor3 = Color3.fromRGB(245, 240, 250)
+toggleBtn.Text = 'OFF'
+toggleBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+toggleBtn.Font = Enum.Font.GothamBold
+toggleBtn.TextSize = 11
+toggleBtn.Parent = tabs.SilentAim
+Instance.new('UICorner', toggleBtn).CornerRadius = UDim.new(0, 6)
 
-local fovCircle = Instance.new('Frame')
-fovCircle.Name = 'FOVCircle'
-fovCircle.Size = UDim2.new(0, 0, 0, 0)
-fovCircle.Position = UDim2.new(0, 0, 0, 0)
-fovCircle.BackgroundTransparency = 1
-fovCircle.BorderSizePixel = 0
-fovCircle.Visible = false
-fovCircle.ZIndex = 200
-fovCircle.Parent = gui
-
-local fovCircleStroke = Instance.new('UIStroke')
-fovCircleStroke.Color = Color3.new(1, 1, 1)
-fovCircleStroke.Thickness = 2
-fovCircleStroke.Transparency = 0
-fovCircleStroke.Parent = fovCircle
-
-Instance.new('UICorner', fovCircle).CornerRadius = UDim.new(1, 0)
-
-_G.FOV_Enabled = false
-
-local function updateFovVisual()
-    local radius = math.max(0, tonumber(_G.FOV_RADIUS) or 0)
-    local enabled = _G.FOV_Enabled == true
-
-    if not enabled or radius <= 0 then
+local function updateRevolverFovCircle()
+    local enabled = _G.RevolverBypass and (_G.FOV_RADIUS or 0) > 0
+    if not enabled then
         fovCircle.Visible = false
         return
     end
 
+    local radius = math.max(20, _G.FOV_RADIUS or 0)
     local diameter = math.clamp(radius * 2, 20, 1800)
     local mousePos = UIS:GetMouseLocation()
-    local screenSize = cam and cam.ViewportSize or Vector2.new(1920, 1080)
+    local screenSize = workspace.CurrentCamera and workspace.CurrentCamera.ViewportSize or Vector2.new(1920, 1080)
     local x = math.clamp(mousePos.X - (diameter / 2), 0, math.max(0, screenSize.X - diameter))
     local y = math.clamp(mousePos.Y - (diameter / 2), 0, math.max(0, screenSize.Y - diameter))
 
@@ -583,21 +648,22 @@ local function updateFovVisual()
     fovCircle.Visible = true
 end
 
-fovToggleBtn.MouseButton1Click:Connect(function()
-    _G.FOV_Enabled = not _G.FOV_Enabled
-    if _G.FOV_Enabled then
-        fovToggleBtn.Text = 'ON'
-        fovToggleBtn.BackgroundColor3 = Color3.fromRGB(170, 130, 255)
-    else
-        fovToggleBtn.Text = 'OFF'
-        fovToggleBtn.BackgroundColor3 = Color3.fromRGB(245, 240, 250)
-    end
-    updateFovVisual()
+local function syncRevolverBypassUI()
+    toggleBtn.Text = _G.RevolverBypass and 'ON' or 'OFF'
+    toggleBtn.BackgroundColor3 = _G.RevolverBypass and Color3.fromRGB(170, 130, 255) or Color3.fromRGB(245, 240, 250)
+    updateRevolverFovCircle()
+end
+
+toggleBtn.MouseButton1Click:Connect(function()
+    _G.RevolverBypass = not _G.RevolverBypass
+    syncRevolverBypassUI()
 end)
 
-game:GetService('RunService').RenderStepped:Connect(function()
-    updateFovVisual()
+RunService.RenderStepped:Connect(function()
+    updateRevolverFovCircle()
 end)
+
+syncRevolverBypassUI()
 
 local wallLabel = Instance.new('TextLabel')
 wallLabel.Size = UDim2.new(0, 150, 0, 30)
@@ -864,6 +930,236 @@ dropMain.MouseButton1Click:Connect(function()
     end
     dropScroll.Visible = not dropScroll.Visible
 end)
+-- ==================== TRIGGER BOT ====================
+local tbEnabledLabel = Instance.new('TextLabel')
+tbEnabledLabel.Size = UDim2.new(0, 160, 0, 30)
+tbEnabledLabel.Position = UDim2.new(0, 15, 0, 55)
+tbEnabledLabel.Text = 'TriggerBot Enabled'
+tbEnabledLabel.TextColor3 = Color3.fromRGB(180, 140, 255)
+tbEnabledLabel.TextSize = 13
+tbEnabledLabel.Font = Enum.Font.Gotham
+tbEnabledLabel.BackgroundTransparency = 1
+tbEnabledLabel.TextXAlignment = Enum.TextXAlignment.Left
+tbEnabledLabel.Parent = tabs.TriggerBot
+
+local tbEnabledBtn = Instance.new('TextButton')
+tbEnabledBtn.Size = UDim2.new(0, 50, 0, 22)
+tbEnabledBtn.Position = UDim2.new(1, -65, 0, 59)
+tbEnabledBtn.BackgroundColor3 = Color3.fromRGB(245, 240, 250)
+tbEnabledBtn.Text = 'OFF'
+tbEnabledBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+tbEnabledBtn.Font = Enum.Font.GothamBold
+tbEnabledBtn.TextSize = 11
+tbEnabledBtn.Parent = tabs.TriggerBot
+Instance.new('UICorner', tbEnabledBtn).CornerRadius = UDim.new(0, 6)
+
+tbEnabledBtn.MouseButton1Click:Connect(function()
+    TriggerBot.MasterEnabled = not TriggerBot.MasterEnabled
+    tbEnabledBtn.Text = TriggerBot.MasterEnabled and 'ON' or 'OFF'
+    tbEnabledBtn.BackgroundColor3 = TriggerBot.MasterEnabled and Color3.fromRGB(170, 130, 255) or Color3.fromRGB(245, 240, 250)
+    TriggerBot.Active = TriggerBot.MasterEnabled
+end)
+
+local tbBindLabel = Instance.new('TextLabel')
+tbBindLabel.Size = UDim2.new(0, 160, 0, 30)
+tbBindLabel.Position = UDim2.new(0, 15, 0, 95)
+tbBindLabel.Text = 'TriggerBot Bind'
+tbBindLabel.TextColor3 = Color3.fromRGB(180, 140, 255)
+tbBindLabel.TextSize = 13
+tbBindLabel.Font = Enum.Font.Gotham
+tbBindLabel.BackgroundTransparency = 1
+tbBindLabel.TextXAlignment = Enum.TextXAlignment.Left
+tbBindLabel.Parent = tabs.TriggerBot
+
+local tbBindBtn = Instance.new('TextButton')
+tbBindBtn.Size = UDim2.new(0, 70, 0, 22)
+tbBindBtn.Position = UDim2.new(1, -85, 0, 99)
+tbBindBtn.BackgroundColor3 = Color3.fromRGB(235, 230, 250)
+tbBindBtn.Text = 'Key: T'
+tbBindBtn.TextColor3 = Color3.fromRGB(120, 60, 210)
+tbBindBtn.Font = Enum.Font.GothamBold
+tbBindBtn.TextSize = 11
+tbBindBtn.Parent = tabs.TriggerBot
+Instance.new('UICorner', tbBindBtn).CornerRadius = UDim.new(0, 6)
+
+tbBindBtn.MouseButton1Click:Connect(function()
+    isTriggerBinding = true
+    tbBindBtn.Text = '...'
+end)
+
+-- ==================== HITBOX EXPANDER ====================
+local hbEnabledLabel = Instance.new('TextLabel')
+hbEnabledLabel.Size = UDim2.new(0, 160, 0, 30)
+hbEnabledLabel.Position = UDim2.new(0, 15, 0, 55)
+hbEnabledLabel.Text = 'Hitbox Enabled'
+hbEnabledLabel.TextColor3 = Color3.fromRGB(180, 140, 255)
+hbEnabledLabel.TextSize = 13
+hbEnabledLabel.Font = Enum.Font.Gotham
+hbEnabledLabel.BackgroundTransparency = 1
+hbEnabledLabel.TextXAlignment = Enum.TextXAlignment.Left
+hbEnabledLabel.Parent = tabs.Hitbox
+
+local hbEnabledBtn = Instance.new('TextButton')
+hbEnabledBtn.Size = UDim2.new(0, 50, 0, 22)
+hbEnabledBtn.Position = UDim2.new(1, -65, 0, 59)
+hbEnabledBtn.BackgroundColor3 = Color3.fromRGB(245, 240, 250)
+hbEnabledBtn.Text = 'OFF'
+hbEnabledBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+hbEnabledBtn.Font = Enum.Font.GothamBold
+hbEnabledBtn.TextSize = 11
+hbEnabledBtn.Parent = tabs.Hitbox
+Instance.new('UICorner', hbEnabledBtn).CornerRadius = UDim.new(0, 6)
+
+hbEnabledBtn.MouseButton1Click:Connect(function()
+    _G.Hitbox_Enabled = not _G.Hitbox_Enabled
+    hbEnabledBtn.Text = _G.Hitbox_Enabled and 'ON' or 'OFF'
+    hbEnabledBtn.BackgroundColor3 = _G.Hitbox_Enabled and Color3.fromRGB(170, 130, 255) or Color3.fromRGB(245, 240, 250)
+end)
+
+local hbVisLabel = Instance.new('TextLabel')
+hbVisLabel.Size = UDim2.new(0, 160, 0, 30)
+hbVisLabel.Position = UDim2.new(0, 15, 0, 95)
+hbVisLabel.Text = 'Visibility'
+hbVisLabel.TextColor3 = Color3.fromRGB(180, 140, 255)
+hbVisLabel.TextSize = 13
+hbVisLabel.Font = Enum.Font.Gotham
+hbVisLabel.BackgroundTransparency = 1
+hbVisLabel.TextXAlignment = Enum.TextXAlignment.Left
+hbVisLabel.Parent = tabs.Hitbox
+
+local hbVisBtn = Instance.new('TextButton')
+hbVisBtn.Size = UDim2.new(0, 50, 0, 22)
+hbVisBtn.Position = UDim2.new(1, -65, 0, 99)
+hbVisBtn.Text = _G.Hitbox_Visible and 'ON' or 'OFF'
+hbVisBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+hbVisBtn.BackgroundColor3 = _G.Hitbox_Visible and Color3.fromRGB(170, 130, 255) or Color3.fromRGB(245, 240, 250)
+hbVisBtn.Font = Enum.Font.GothamBold
+hbVisBtn.TextSize = 11
+hbVisBtn.Parent = tabs.Hitbox
+Instance.new('UICorner', hbVisBtn).CornerRadius = UDim.new(0, 6)
+
+hbVisBtn.MouseButton1Click:Connect(function()
+    _G.Hitbox_Visible = not _G.Hitbox_Visible
+    hbVisBtn.Text = _G.Hitbox_Visible and 'ON' or 'OFF'
+    hbVisBtn.BackgroundColor3 = _G.Hitbox_Visible and Color3.fromRGB(170, 130, 255) or Color3.fromRGB(245, 240, 250)
+end)
+
+local hbSizeLabel = Instance.new('TextLabel')
+hbSizeLabel.Size = UDim2.new(1, -30, 0, 20)
+hbSizeLabel.Position = UDim2.new(0, 15, 0, 135)
+hbSizeLabel.Text = 'Size: 1'
+hbSizeLabel.TextColor3 = Color3.fromRGB(180, 140, 255)
+hbSizeLabel.TextSize = 13
+hbSizeLabel.Font = Enum.Font.Gotham
+hbSizeLabel.BackgroundTransparency = 1
+hbSizeLabel.TextXAlignment = Enum.TextXAlignment.Left
+hbSizeLabel.Parent = tabs.Hitbox
+
+local hbSlider = Instance.new('Frame')
+hbSlider.Size = UDim2.new(1, -30, 0, 6)
+hbSlider.Position = UDim2.new(0, 15, 0, 165)
+hbSlider.BackgroundColor3 = Color3.fromRGB(235, 230, 250)
+hbSlider.BorderSizePixel = 0
+hbSlider.Parent = tabs.Hitbox
+Instance.new('UICorner', hbSlider).CornerRadius = UDim.new(1, 0)
+
+local hbSliderBtn = Instance.new('TextButton')
+hbSliderBtn.Size = UDim2.new(0, 14, 0, 14)
+hbSliderBtn.Position = UDim2.new(0, 0, 0.5, -7)
+hbSliderBtn.BackgroundColor3 = Color3.fromRGB(170, 130, 255)
+hbSliderBtn.BorderSizePixel = 0
+hbSliderBtn.Text = ""
+hbSliderBtn.Parent = hbSlider
+Instance.new('UICorner', hbSliderBtn).CornerRadius = UDim.new(1, 0)
+
+local hbColors = {
+    Color3.fromRGB(255, 50, 50), Color3.fromRGB(255, 140, 0), Color3.fromRGB(255, 220, 50),
+    Color3.fromRGB(50, 220, 50), Color3.fromRGB(50, 150, 255), Color3.fromRGB(160, 50, 255),
+    Color3.fromRGB(255, 100, 180), Color3.fromRGB(255, 255, 255), Color3.fromRGB(30, 30, 30)
+}
+
+for idx, col in ipairs(hbColors) do
+    local cBtn = Instance.new('TextButton')
+    cBtn.Size = UDim2.new(0, 24, 0, 24)
+    cBtn.Position = UDim2.new(0, 15 + (idx-1) * 30, 0, 195)
+    cBtn.BackgroundColor3 = col
+    cBtn.Text = ""
+    cBtn.Parent = tabs.Hitbox
+    Instance.new('UICorner', cBtn).CornerRadius = UDim.new(0, 5)
+    local strk = Instance.new('UIStroke', cBtn)
+    strk.Color = Color3.fromRGB(180, 160, 220)
+    strk.Thickness = 1
+    cBtn.MouseButton1Click:Connect(function()
+        _G.Hitbox_Color = col
+    end)
+end
+-- Hitbox slider textbox and drag handling
+local hbInput = Instance.new('TextBox')
+hbInput.Size = UDim2.new(0, 60, 0, 22)
+hbInput.Position = UDim2.new(1, -75, 0, 135)
+hbInput.Text = tostring(_G.Hitbox_Size)
+hbInput.PlaceholderText = tostring(_G.Hitbox_Size)
+hbInput.TextColor3 = Color3.fromRGB(95, 38, 145)
+hbInput.TextSize = 12
+hbInput.Font = Enum.Font.Gotham
+hbInput.BackgroundColor3 = Color3.fromRGB(230, 220, 255)
+hbInput.BorderSizePixel = 0
+hbInput.ClearTextOnFocus = false
+hbInput.TextXAlignment = Enum.TextXAlignment.Center
+hbInput.Parent = tabs.Hitbox
+Instance.new('UICorner', hbInput).CornerRadius = UDim.new(0, 6)
+
+local hbMoveConn
+local function updateHBSlider(input)
+    local absPos = hbSlider.AbsolutePosition
+    local absSize = hbSlider.AbsoluteSize
+    if absSize.X <= 0 then return end
+    local percentage = math.clamp((input.Position.X - absPos.X) / absSize.X, 0, 1)
+    hbSliderBtn.Position = UDim2.new(percentage, -7, 0.5, -7)
+    local finalValue = math.round(1 + (percentage * 49))
+    hbSizeLabel.Text = 'Size: ' .. tostring(finalValue)
+    if hbInput and hbInput:IsA('TextBox') then hbInput.Text = tostring(finalValue) end
+    _G.Hitbox_Size = finalValue
+end
+
+hbSliderBtn.InputBegan:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+        hbMoveConn = UIS.InputChanged:Connect(function(moveInput)
+            if moveInput.UserInputType == Enum.UserInputType.MouseMovement or moveInput.UserInputType == Enum.UserInputType.Touch then
+                updateHBSlider(moveInput)
+            end
+        end)
+    end
+end)
+
+hbSliderBtn.InputEnded:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+        if hbMoveConn then hbMoveConn:Disconnect() hbMoveConn = nil end
+    end
+end)
+
+hbInput.FocusLost:Connect(function(enter)
+    if not enter then return end
+    local value = tonumber(hbInput.Text)
+    if not value then
+        hbInput.Text = tostring(_G.Hitbox_Size)
+        return
+    end
+    local clamped = math.clamp(math.floor(value), 1, 50)
+    _G.Hitbox_Size = clamped
+    hbSizeLabel.Text = 'Size: ' .. tostring(clamped)
+    local percent = (clamped - 1) / 49
+    hbSliderBtn.Position = UDim2.new(percent, -7, 0.5, -7)
+    hbInput.Text = tostring(clamped)
+end)
+
+-- initialize slider position when visible
+task.defer(function()
+    task.wait(0.05)
+    local initPercent = math.clamp((_G.Hitbox_Size - 1) / 49, 0, 1)
+    hbSliderBtn.Position = UDim2.new(initPercent, -7, 0.5, -7)
+    hbSizeLabel.Text = 'Size: ' .. tostring(_G.Hitbox_Size)
+end)
 -- CamLock Tab UI
 local camLabel = Instance.new('TextLabel')
 camLabel.Size = UDim2.new(0, 150, 0, 30)
@@ -945,26 +1241,44 @@ local function refreshCamLockTarget()
     return targetPlayer, targetPart
 end
 
-local function updateCamLockState(enabled)
-    _G.CamLock_Enabled = enabled
-    camLockToggleBtn.Text = _G.CamLock_Enabled and 'ON' or 'OFF'
-    camLockToggleBtn.BackgroundColor3 = _G.CamLock_Enabled and Color3.fromRGB(170, 130, 255) or Color3.fromRGB(245, 240, 250)
-    if _G.CamLock_Enabled then
-        local targetPlayer, targetPart = refreshCamLockTarget()
-        if targetPlayer and targetPart and me.Character and me.Character:FindFirstChild('HumanoidRootPart') then
-            local rootPos = me.Character.HumanoidRootPart.Position
-            local direction = targetPart.Position - rootPos
-            lastCamLockDir = direction.Magnitude > 0 and direction.Unit or cam.CFrame.LookVector
-            lockedLabel.Text = 'Locked: ' .. (targetPlayer.DisplayName or targetPlayer.Name)
-        else
-            lastCamLockDir = nil
-            lockedLabel.Text = 'Locked: None'
-        end
+local function enableCamLock()
+    _G.CamLock_Enabled = true
+    camLockToggleBtn.Text = 'ON'
+    camLockToggleBtn.BackgroundColor3 = Color3.fromRGB(170, 130, 255)
+    lastLockedPlayer = nil
+    currentCamLockTargetPart = nil
+
+    local targetPlayer, targetPart = getCamLockTargetByDistance()
+    lastLockedPlayer = targetPlayer
+    currentCamLockTargetPart = targetPart
+    if targetPlayer and targetPart and me.Character and me.Character:FindFirstChild('HumanoidRootPart') then
+        local rootPos = me.Character.HumanoidRootPart.Position
+        local direction = targetPart.Position - rootPos
+        lastCamLockDir = direction.Magnitude > 0 and direction.Unit or cam.CFrame.LookVector
+        lockedLabel.Text = 'Locked: ' .. (targetPlayer.DisplayName or targetPlayer.Name)
     else
-        lastLockedPlayer = nil
-        currentCamLockTargetPart = nil
         lastCamLockDir = nil
         lockedLabel.Text = 'Locked: None'
+    end
+end
+
+local function disableCamLock()
+    _G.CamLock_Enabled = false
+    camLockToggleBtn.Text = 'OFF'
+    camLockToggleBtn.BackgroundColor3 = Color3.fromRGB(245, 240, 250)
+    lastLockedPlayer = nil
+    currentCamLockTargetPart = nil
+    lastCamLockDir = nil
+    if lockedLabel then
+        lockedLabel.Text = 'Locked: None'
+    end
+end
+
+local function updateCamLockState(enabled)
+    if enabled then
+        enableCamLock()
+    else
+        disableCamLock()
     end
 end
 
@@ -1181,19 +1495,6 @@ lockedLabel.BackgroundTransparency = 1
 lockedLabel.TextXAlignment = Enum.TextXAlignment.Left
 lockedLabel.Parent = tabs.CamLock
 
--- allow binding and toggling by key
-UIS.InputBegan:Connect(function(input, gpe)
-    if gpe then return end
-    if isCamLockBinding and input.UserInputType == Enum.UserInputType.Keyboard then
-        _G.CamLock_Key = input.KeyCode
-        camLockBindBtn.Text = 'Key: ' .. input.KeyCode.Name
-        isCamLockBinding = false
-        return
-    end
-    if input.KeyCode == _G.CamLock_Key and not isCamLockBinding then
-        updateCamLockState(not _G.CamLock_Enabled)
-    end
-end)
 local espBoxLabel = Instance.new('TextLabel')
 espBoxLabel.Size = UDim2.new(0, 150, 0, 30)
 espBoxLabel.Position = UDim2.new(0, 15, 0, 95)
@@ -1645,18 +1946,13 @@ local function refreshWhitelistList()
     end
 end
 
+_G.Teleport_Key = Enum.KeyCode.T
 local selectedTeleportPlayer = nil
+local teleportLoopActive = false
+local isChoosingTeleportKey = false
+
 
 local tpLabel = Instance.new('TextLabel')
-tpLabel.Size = UDim2.new(1, -30, 0, 30)
-tpLabel.Position = UDim2.new(0, 15, 0, 55)
-tpLabel.Text = 'Click a player to teleport to them:'
-tpLabel.TextColor3 = Color3.fromRGB(180, 140, 255)
-tpLabel.TextSize = 13
-tpLabel.Font = Enum.Font.Gotham
-tpLabel.BackgroundTransparency = 1
-tpLabel.TextXAlignment = Enum.TextXAlignment.Left
-tpLabel.Parent = tabs.Teleport
 
 local teleportSelectionLabel = Instance.new('TextLabel')
 teleportSelectionLabel.Size = UDim2.new(1, -30, 0, 24)
@@ -1668,6 +1964,17 @@ teleportSelectionLabel.Font = Enum.Font.Gotham
 teleportSelectionLabel.BackgroundTransparency = 1
 teleportSelectionLabel.TextXAlignment = Enum.TextXAlignment.Left
 teleportSelectionLabel.Parent = tabs.Teleport
+
+local teleportKeyButton = Instance.new('TextButton')
+teleportKeyButton.Size = UDim2.new(0, 120, 0, 24)
+teleportKeyButton.Position = UDim2.new(1, -135, 0, 80)
+teleportKeyButton.BackgroundColor3 = Color3.fromRGB(235, 230, 250)
+teleportKeyButton.Text = 'Key: T'
+teleportKeyButton.TextColor3 = Color3.fromRGB(180, 140, 255)
+teleportKeyButton.Font = Enum.Font.GothamBold
+teleportKeyButton.TextSize = 11
+teleportKeyButton.Parent = tabs.Teleport
+Instance.new('UICorner', teleportKeyButton).CornerRadius = UDim.new(0, 6)
 
 local tpListFrame = Instance.new('ScrollingFrame')
 tpListFrame.Size = UDim2.new(1, -30, 1, -115)
@@ -1772,11 +2079,48 @@ local function refreshTeleportList()
 
         item.MouseButton1Click:Connect(function()
             updateTeleportSelection(p)
-            teleportToPlayer(p)
             refreshTeleportList()
         end)
     end
 end
+
+teleportKeyButton.MouseButton1Click:Connect(function()
+    isChoosingTeleportKey = true
+    teleportKeyButton.Text = 'Press a key...'
+end)
+
+UIS.InputBegan:Connect(function(input, gpe)
+    if gpe then return end
+    if isChoosingTeleportKey and input.UserInputType == Enum.UserInputType.Keyboard then
+        _G.Teleport_Key = input.KeyCode
+        teleportKeyButton.Text = 'Key: ' .. input.KeyCode.Name
+        isChoosingTeleportKey = false
+    elseif input.KeyCode == _G.Teleport_Key and not isChoosingTeleportKey and selectedTeleportPlayer then
+        if not teleportLoopActive then
+            teleportLoopActive = true
+            teleportToPlayer(selectedTeleportPlayer)
+            task.spawn(function()
+                while teleportLoopActive do
+                    if selectedTeleportPlayer then
+                        teleportToPlayer(selectedTeleportPlayer)
+                    end
+                    task.wait(0.15)
+                    if not UIS:IsKeyDown(_G.Teleport_Key) then
+                        teleportLoopActive = false
+                        break
+                    end
+                end
+            end)
+        end
+    end
+end)
+
+UIS.InputEnded:Connect(function(input, gpe)
+    if gpe then return end
+    if input.KeyCode == _G.Teleport_Key then
+        teleportLoopActive = false
+    end
+end)
 
 local function applyHeadlessState(character)
     if not character then return end
@@ -1920,91 +2264,25 @@ end)
 
 refreshWhitelistList()
 refreshTeleportList()
-
-local function syncFovUI(value)
-    local clamped = math.clamp(math.floor(tonumber(value) or _G.FOV_RADIUS or 0), 0, fovMax)
-    _G.FOV_RADIUS = clamped
-    if fovInput and fovInput:IsA('TextBox') then
-        fovInput.Text = tostring(clamped)
-    end
-    local percent = fovMax > 0 and (clamped / fovMax) or 0
-    if button then
-        button.Position = UDim2.new(percent, -7, 0.5, -7)
-    end
-    updateFovVisual()
-end
-
-local function syncSpeedUI(value)
-    local clamped = math.clamp(math.floor(tonumber(value) or _G.Speed_Value or 16), 16, 1000)
-    _G.Speed_Value = clamped
-    if speedInput and speedInput:IsA('TextBox') then
-        speedInput.Text = tostring(clamped)
-    end
-    if speedValLabel then
-        speedValLabel.Text = 'Speed Value: ' .. tostring(clamped)
-    end
-    if speedSliderBtn then
-        local percent = (clamped - 16) / 984
-        speedSliderBtn.Position = UDim2.new(math.clamp(percent, 0, 1), -7, 0.5, -7)
-    end
-end
-
-local function syncJumpUI(value)
-    local clamped = math.clamp(math.floor(tonumber(value) or _G.JumpPower_Value or 50), 50, 1000)
-    _G.JumpPower_Value = clamped
-    if jumpInput and jumpInput:IsA('TextBox') then
-        jumpInput.Text = tostring(clamped)
-    end
-    if jumpValLabel then
-        jumpValLabel.Text = 'Jump Value: ' .. tostring(clamped)
-    end
-    if jumpSliderBtn then
-        local percent = (clamped - 50) / 950
-        jumpSliderBtn.Position = UDim2.new(math.clamp(percent, 0, 1), -7, 0.5, -7)
-    end
-end
-
-local function refreshSliderState()
-    syncFovUI(_G.FOV_RADIUS or 0)
-    syncSpreadUI(_0x52a0d5.BulletSpread.Amount or 0)
-    syncSpeedUI(_G.Speed_Value or 16)
-    syncJumpUI(_G.JumpPower_Value or 50)
-end
-
 local moveConnection1
 local function updateSlider1(input)
     local percentage = math.clamp((input.Position.X - slider.AbsolutePosition.X) / slider.AbsoluteSize.X, 0, 1)
-    syncFovUI(math.round(percentage * fovMax))
+    button.Position = UDim2.new(percentage, -7, 0.5, -7)
+    local finalValue = math.round(percentage * fovMax)
+    if fovInput and fovInput:IsA('TextBox') then
+        fovInput.Text = tostring(finalValue)
+    end
+    _G.FOV_RADIUS = finalValue
+    syncRevolverBypassUI()
 end
 
-local function startFovDrag(input)
+button.InputBegan:Connect(function(input)
     if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
-        updateSlider1(input)
         moveConnection1 = UIS.InputChanged:Connect(function(moveInput)
             if moveInput.UserInputType == Enum.UserInputType.MouseMovement or moveInput.UserInputType == Enum.UserInputType.Touch then
                 updateSlider1(moveInput)
             end
         end)
-    end
-end
-
-button.InputBegan:Connect(startFovDrag)
-button.InputEnded:Connect(function(input)
-    if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
-        if moveConnection1 then
-            moveConnection1:Disconnect()
-            moveConnection1 = nil
-        end
-    end
-end)
-
-slider.InputBegan:Connect(startFovDrag)
-slider.InputEnded:Connect(function(input)
-    if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
-        if moveConnection1 then
-            moveConnection1:Disconnect()
-            moveConnection1 = nil
-        end
     end
 end)
 
@@ -2026,10 +2304,15 @@ end
 fovInput.FocusLost:Connect(function(enterPressed)
     local value = tonumber(fovInput.Text)
     if not value then
-        syncFovUI(_G.FOV_RADIUS)
+        fovInput.Text = tostring(_G.FOV_RADIUS)
         return
     end
-    syncFovUI(value)
+    local clamped = math.clamp(value, 0, fovMax)
+    _G.FOV_RADIUS = clamped
+    local percent = fovMax > 0 and clamped / fovMax or 0
+    button.Position = UDim2.new(percent, -7, 0.5, -7)
+    fovInput.Text = tostring(clamped)
+    syncRevolverBypassUI()
 end)
 
 spreadInput.FocusLost:Connect(function(enterPressed)
@@ -2061,8 +2344,13 @@ end)
 local moveConnection4
 local function updateSpeedSlider(input)
     local percentage = math.clamp((input.Position.X - speedSlider.AbsolutePosition.X) / speedSlider.AbsoluteSize.X, 0, 1)
+    speedSliderBtn.Position = UDim2.new(percentage, -7, 0.5, -7)
     local finalValue = math.round(16 + (percentage * 984))
-    syncSpeedUI(finalValue)
+    speedValLabel.Text = 'Speed Value: ' .. tostring(finalValue)
+    if speedInput and speedInput:IsA('TextBox') then
+        speedInput.Text = tostring(finalValue)
+    end
+    _G.Speed_Value = finalValue
 end
 
 speedSliderBtn.InputBegan:Connect(function(input)
@@ -2075,20 +2363,16 @@ speedSliderBtn.InputBegan:Connect(function(input)
     end
 end)
 
-speedSliderBtn.InputEnded:Connect(function(input)
-    if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
-        if moveConnection4 then
-            moveConnection4:Disconnect()
-            moveConnection4 = nil
-        end
-    end
-end)
-
 local moveConnection5
 local function updateJumpSlider(input)
     local percentage = math.clamp((input.Position.X - jumpSlider.AbsolutePosition.X) / jumpSlider.AbsoluteSize.X, 0, 1)
+    jumpSliderBtn.Position = UDim2.new(percentage, -7, 0.5, -7)
     local finalValue = math.round(50 + (percentage * 950))
-    syncJumpUI(finalValue)
+    jumpValLabel.Text = 'Jump Value: ' .. tostring(finalValue)
+    if jumpInput and jumpInput:IsA('TextBox') then
+        jumpInput.Text = tostring(finalValue)
+    end
+    _G.JumpPower_Value = finalValue
 end
 
 jumpSliderBtn.InputBegan:Connect(function(input)
@@ -2098,15 +2382,6 @@ jumpSliderBtn.InputBegan:Connect(function(input)
                 updateJumpSlider(moveInput)
             end
         end)
-    end
-end)
-
-jumpSliderBtn.InputEnded:Connect(function(input)
-    if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
-        if moveConnection5 then
-            moveConnection5:Disconnect()
-            moveConnection5 = nil
-        end
     end
 end)
 
@@ -2131,6 +2406,113 @@ UIS.InputBegan:Connect(function(input, gpe)
     end
     if input.KeyCode == _G.JumpPower_Key and not jumpIsBinding and _G.JumpPower_ToggleEnabled then
         _G.JumpPower_Enabled = not _G.JumpPower_Enabled
+    end
+end)
+
+-- ==================== TRIGGER BOT LOGIC ====================
+local function IsHoldingBlacklisted()
+    local tool = me.Character and me.Character:FindFirstChildOfClass("Tool")
+    if tool then
+        local name = tool.Name:lower()
+        for _, word in pairs(TriggerBot.Blacklist) do
+            if string.find(name, word:lower()) then return true end
+        end
+    end
+    return false
+end
+
+RunService.RenderStepped:Connect(function()
+    if TriggerBot.MasterEnabled and TriggerBot.Active then
+        if IsHoldingBlacklisted() then return end
+        local RayParams = RaycastParams.new()
+        RayParams.FilterType = Enum.RaycastFilterType.Exclude
+        RayParams.FilterDescendantsInstances = {me.Character}
+        local UnitRay = cam:ScreenPointToRay(mouse.X, mouse.Y)
+        local Result = workspace:Raycast(UnitRay.Origin, UnitRay.Direction * 500, RayParams)
+        if Result and Result.Instance then
+            local Char = Result.Instance:FindFirstAncestorOfClass("Model")
+            if Char and Char:FindFirstChild("Humanoid") and Char ~= me.Character and not isWhitelisted(plrs:GetPlayerFromCharacter(Char)) then
+                if mouse1click then
+                    mouse1click()
+                    task.wait(TriggerBot.ClickDelay)
+                end
+            end
+        end
+    end
+end)
+
+-- ==================== HITBOX LOGIC ====================
+local function applyToHRP(hrp)
+    if not hrp or not hrp:IsA("BasePart") then return end
+    if _G.Hitbox_Enabled then
+        hrp.Size = Vector3.new(_G.Hitbox_Size, _G.Hitbox_Size, _G.Hitbox_Size)
+        hrp.Transparency = _G.Hitbox_Visible and 0.78 or 1
+        hrp.CanCollide = false
+        hrp.Color = _G.Hitbox_Color
+        hrp.Material = Enum.Material.Neon
+    end
+end
+
+local function applyHitboxes()
+    for _, pl in ipairs(plrs:GetPlayers()) do
+        if pl ~= me and pl.Character then
+            local hrp = pl.Character:FindFirstChild("HumanoidRootPart")
+            if hrp then applyToHRP(hrp) end
+        end
+    end
+end
+
+local function applyHitboxToChar(pl, char)
+    if pl == me then return end
+    local hrp = char:WaitForChild("HumanoidRootPart", 5)
+    if hrp then
+        task.wait(0.2)
+        applyToHRP(hrp)
+    end
+end
+
+for _, pl in ipairs(plrs:GetPlayers()) do
+    if pl ~= me then
+        pl.CharacterAdded:Connect(function(char) applyHitboxToChar(pl, char) end)
+        if pl.Character then applyHitboxToChar(pl, pl.Character) end
+    end
+end
+
+plrs.PlayerAdded:Connect(function(pl)
+    if pl ~= me then
+        pl.CharacterAdded:Connect(function(char) applyHitboxToChar(pl, char) end)
+        if pl.Character then applyHitboxToChar(pl, pl.Character) end
+    end
+end)
+
+RunService.Heartbeat:Connect(function()
+    if _G.Hitbox_Enabled then applyHitboxes() end
+end)
+
+-- ==================== INPUT HANDLING (Trigger/Cam binds) ====================
+UIS.InputBegan:Connect(function(input, gpe)
+    if gpe then return end
+
+    if isTriggerBinding and input.UserInputType == Enum.UserInputType.Keyboard then
+        TriggerBot.TriggerKey = input.KeyCode
+        tbBindBtn.Text = 'Key: ' .. input.KeyCode.Name
+        isTriggerBinding = false
+        return
+    end
+
+    if isCamLockBinding and input.UserInputType == Enum.UserInputType.Keyboard then
+        _G.CamLock_Key = input.KeyCode
+        camLockBindBtn.Text = 'Key: ' .. input.KeyCode.Name
+        isCamLockBinding = false
+        return
+    end
+
+    if input.KeyCode == TriggerBot.TriggerKey then
+        TriggerBot.Active = not TriggerBot.Active
+    end
+
+    if input.KeyCode == _G.CamLock_Key and not isCamLockBinding then
+        updateCamLockState(not _G.CamLock_Enabled)
     end
 end)
 
@@ -2161,7 +2543,8 @@ local function createESP(player)
 
     local conn
     conn = game:GetService("RunService").RenderStepped:Connect(function()
-        if isWhitelisted(player) then
+        local currentCam = workspace.CurrentCamera or cam
+        if isWhitelisted(player) or not currentCam then
             box.Visible = false
             name.Visible = false
             healthBarBg.Visible = false
@@ -2172,37 +2555,46 @@ local function createESP(player)
         if player and player.Character and player.Character:FindFirstChild("HumanoidRootPart") and player.Character:FindFirstChild("Humanoid") and player.Character.Humanoid.Health > 0 then
             local rootPart = player.Character.HumanoidRootPart
             local head = player.Character:FindFirstChild("Head") or rootPart
-            local rootPos, rootOnScreen = cam:WorldToViewportPoint(rootPart.Position)
+            local rootPos, rootOnScreen = currentCam:WorldToViewportPoint(rootPart.Position)
             
             if rootOnScreen then
-                local headPos = cam:WorldToViewportPoint(head.Position + Vector3.new(0, 0.5, 0))
-                local legPos = cam:WorldToViewportPoint(rootPart.Position - Vector3.new(0, 3, 0))
-                local boxHeight = math.abs(headPos.Y - legPos.Y)
-                local boxWidth = boxHeight / 2
+                local headPos = currentCam:WorldToViewportPoint(head.Position + Vector3.new(0, 0.5, 0))
+                local legPos = currentCam:WorldToViewportPoint(rootPart.Position - Vector3.new(0, 3, 0))
+                local leftPos = currentCam:WorldToViewportPoint(rootPart.Position - rootPart.CFrame.RightVector * (rootPart.Size.X * 0.8))
+                local rightPos = currentCam:WorldToViewportPoint(rootPart.Position + rootPart.CFrame.RightVector * (rootPart.Size.X * 0.8))
+                local boxTop = headPos.Y - 8
+                local boxBottom = legPos.Y + 4
+                local boxHeight = math.max(boxBottom - boxTop, 40)
+                local boxWidth = math.max(math.abs(rightPos.X - leftPos.X) * 0.65, boxHeight * 0.35, 20)
 
                 if _G.ESP_Boxes then
                     box.Size = Vector2.new(boxWidth, boxHeight)
-                    box.Position = Vector2.new(rootPos.X - boxWidth / 2, rootPos.Y - boxHeight / 2)
+                    box.Position = Vector2.new(rootPos.X - boxWidth / 2, boxTop)
                     box.Color = _G.ESP_Color
                     box.Visible = true
-                else box.Visible = false end
+                else
+                    box.Visible = false
+                end
 
                 if _G.ESP_Names then
-                    name.Position = Vector2.new(rootPos.X, rootPos.Y - boxHeight / 2 - 18)
-                    name.Text = player.DisplayName
+                    name.Text = player.DisplayName or player.Name or "Player"
                     name.Color = _G.ESP_Color
+                    name.Position = Vector2.new(rootPos.X, boxTop - 18)
                     name.Visible = true
-                else name.Visible = false end
+                else
+                    name.Visible = false
+                end
 
                 if _G.ESP_Health then
                     local healthPct = math.clamp(player.Character.Humanoid.Health / math.max(1, player.Character.Humanoid.MaxHealth), 0, 1)
-                    local barWidth = 3
+                    local barWidth = 4
                     local barHeight = math.clamp(boxHeight * 0.7, 24, 140)
-                    local barX = rootPos.X + boxWidth / 2 + 6
+                    local barX = rootPos.X + boxWidth / 2 + 8
                     local barY = rootPos.Y - barHeight / 2
 
                     healthBarBg.Size = Vector2.new(barWidth, barHeight)
                     healthBarBg.Position = Vector2.new(barX, barY)
+                    healthBarBg.Color = Color3.fromRGB(20, 20, 20)
                     healthBarBg.Visible = true
 
                     healthBar.Size = Vector2.new(barWidth, barHeight * healthPct)
@@ -2267,6 +2659,9 @@ end)
 -- Camera lock: keep camera aimed at the selected target without snapping away
 local function updateCamLockCamera()
     if not _G.CamLock_Enabled then
+        lastLockedPlayer = nil
+        currentCamLockTargetPart = nil
+        lastCamLockDir = cam and cam.CFrame and cam.CFrame.LookVector or lastCamLockDir
         if lockedLabel then
             lockedLabel.Text = 'Locked: None'
         end
@@ -2332,5 +2727,6 @@ UIS.InputEnded:Connect(function(input)
         if moveConnection2 then moveConnection2:Disconnect() moveConnection2 = nil end
         if moveConnection4 then moveConnection4:Disconnect() moveConnection4 = nil end
         if moveConnection5 then moveConnection5:Disconnect() moveConnection5 = nil end
+        if hbMoveConn then hbMoveConn:Disconnect() hbMoveConn = nil end
     end
 end)
